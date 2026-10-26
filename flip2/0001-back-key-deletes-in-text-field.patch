@@ -1,0 +1,79 @@
+From d9672245b15c538862aff9a0b886747501b8861c Mon Sep 17 00:00:00 2001
+From: MRsmallAgain <MRsmallAgain@users.noreply.github.com>
+Date: Sun, 25 Oct 2026 22:39:19 -0400
+Subject: [PATCH] Delete in focused text field on BACK when a hardware keyboard
+ is exposed
+
+On keypad devices the input method often cannot receive BACK, so the app sees
+the key while the user is editing a text field and navigates away (in a chat,
+closing it) even though there is text to edit. Treat BACK like the backspace
+key when the focused view is a non-empty EditText: delete one character and
+consume the event. With an empty field, or no focused EditText, the regular
+navigation runs unchanged.
+
+The behaviour is limited to devices that report an exposed hardware keyboard
+(Configuration.hardKeyboardHidden == HARDKEYBOARDHIDDEN_NO), so touch-only
+phones keep the current behaviour.
+
+Tested on a TCL Flip 2 (Android 11): physical BACK and the navigation-bar BACK
+both delete in the Telegram login and chat composer fields.
+---
+ .../java/org/telegram/ui/LaunchActivity.java  | 27 +++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
+index 318cb70..ea7ed64 100644
+--- a/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
++++ b/TMessagesProj/src/main/java/org/telegram/ui/LaunchActivity.java
+@@ -44,6 +44,7 @@ import android.os.SystemClock;
+ import android.provider.ContactsContract;
+ import android.provider.MediaStore;
+ import android.provider.Settings;
++import android.text.Editable;
+ import android.text.Spannable;
+ import android.text.SpannableStringBuilder;
+ import android.text.TextPaint;
+@@ -64,6 +65,7 @@ import android.view.ViewTreeObserver;
+ import android.view.Window;
+ import android.view.WindowInsets;
+ import android.view.WindowManager;
++import android.widget.EditText;
+ import android.widget.FrameLayout;
+ import android.widget.ImageView;
+ import android.widget.LinearLayout;
+@@ -8406,7 +8408,32 @@ public class LaunchActivity extends BasePermissionsActivity implements INavigati
+         }
+     }
+ 
++    /**
++     * On devices with an exposed hardware keyboard, BACK should behave like
++     * the backspace key while the user is editing a non-empty text field,
++     * instead of leaving the current screen. Returns true when a character
++     * was deleted and the back event must be consumed.
++     */
++    private boolean deleteInFocusedTextField() {
++        if (getResources().getConfiguration().hardKeyboardHidden != Configuration.HARDKEYBOARDHIDDEN_NO) {
++            return false;
++        }
++        View focusedView = getCurrentFocus();
++        if (!(focusedView instanceof EditText)) {
++            return false;
++        }
++        Editable text = ((EditText) focusedView).getText();
++        if (text == null || text.length() == 0) {
++            return false;
++        }
++        text.delete(text.length() - 1, text.length());
++        return true;
++    }
++
+     public boolean onBackPressed(boolean invoked) {
++        if (invoked && deleteInFocusedTextField()) {
++            return false;
++        }
+         if (FloatingDebugController.onBackPressed(invoked)) {
+             return false;
+         }
+-- 
+2.43.0
+
